@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Amintiri Vacanță</title>
+    <style>
+        body {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background: linear-gradient(to bottom right, #bfb1b2, #013b18);
+            text-align: center;
+        }
+
+        h1 {
+            margin-bottom: 20px;
+            color: #98c4a7;
+            font-family: 'Times New Roman', Times, serif;
+        }
+
+        button {
+            background-color: #1c452d;
+            color: #98c4a7;
+            padding: 10px 20px;
+            border: none;
+            cursor: pointer;
+            font-size: 16px;
+            border-radius: 15px;
+            font-family: 'Times New Roman', Times, serif;
+            margin-top: 10px;
+        }
+
+        button:hover {
+            background-color: #012f13;
+        }
+
+        video {
+            display: block;
+            margin-top: 20px;
+            max-width: 100%;
+            max-height: 50vh;
+            object-fit: contain;
+            width: 100%;
+        }
+
+        #previewVideo {
+            display: block;
+            margin-top: 20px;
+            max-width: 100%;
+            max-height: 50vh;
+            object-fit: contain;
+            width: 100%;
+        }
+
+        #info {
+            font-size: 24px;
+            text-align: center;
+            font-family: 'Times New Roman', Times, serif;
+            margin-top: 20px;
+            color: #98c4a7;
+            font-weight: bold;
+        }
+
+        #buttonContainer {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin-top: 10px;
+            flex-wrap: wrap;
+        }
+
+        #buttonContainer button {
+            margin: 10px;
+        }
+
+        .back-button {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background-color: #1c452d;
+            color: #98c4a7;
+            padding: 10px 20px;
+            border: none;
+            cursor: pointer;
+            font-size: 16px;
+            border-radius: 15px;
+            font-family: 'Times New Roman', Times, serif;
+            text-decoration: none;
+        }
+
+        .back-button:hover {
+            background-color: #012f13;
+        }
+
+        #previewImage {
+            max-width: 100%;
+            max-height: 50vh;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <a href="index.html" class="back-button">Înapoi</a>
+    <h1>Vacanță</h1>
+    <video id="video" autoplay muted playsinline webkit-playsinline></video>
+    <canvas id="canvas" style="display:none;"></canvas>
+    <div id="info">Fă o poză sau înregistrează un video care să rămână ca amintire a acestei experiențe</div>
+    <div id="buttonContainer">
+        <button id="captureButton">Capturează</button>
+        <button id="recordButton">Înregistrează</button>
+        <button id="stopRecordButton" style="display:none;">Stop înregistrare</button>
+        <button id="repetatiButton" style="display:none;">Repetă</button>
+        <button id="saveButton" style="display:none;">Salvează</button>
+        <button id="switchCameraButton" style="display:none;">Schimbă Camera</button>
+    </div>
+    <video id="previewVideo" controls style="display:none;" playsinline webkit-playsinline></video>
+    <img id="previewImage" style="display:none;">
+
+    <script>
+        // Definim variabile pentru urmărirea stării camerei și a înregistrării
+        let cameraDeschisa = false;
+        let mediaRecorder;
+        let chunks = [];
+        let useFrontCamera = true;
+        let currentStream = null;
+
+        // Referințe către elementele HTML
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const captureButton = document.getElementById('captureButton');
+        const recordButton = document.getElementById('recordButton');
+        const stopRecordButton = document.getElementById('stopRecordButton');
+        const repetatiButton = document.getElementById('repetatiButton');
+        const saveButton = document.getElementById('saveButton');
+        const switchCameraButton = document.getElementById('switchCameraButton');
+        const previewImage = document.getElementById('previewImage');
+        const previewVideo = document.getElementById('previewVideo');
+        const info = document.getElementById('info');
+
+        // Adăugăm evenimentul click pentru capturarea pozei sau începerea înregistrării video
+        captureButton.addEventListener('click', function() {
+            if (!cameraDeschisa) {
+                activateCamera();
+                switchCameraButton.style.display = 'block';
+            } else {
+                takePicture();
+            }
+        });
+
+        recordButton.addEventListener('click', function() {
+            if (!cameraDeschisa) {
+                activateCamera();
+                switchCameraButton.style.display = 'block';
+            } else {
+                startRecording();
+            }
+        });
+
+        stopRecordButton.addEventListener('click', stopRecording);
+
+        // Adăugăm evenimentul click pentru butonul de repetare a capturii pozei sau a înregistrării video
+        repetatiButton.addEventListener('click', function() {
+            // Resetăm variabilele
+            chunks = [];
+
+            // Reactivăm camera
+            if (currentStream) {
+                video.srcObject = currentStream;
+                video.style.display = 'block';
+                cameraDeschisa = true;
+            } else {
+                activateCamera();
+            }
+
+            // Resetăm vizibilitatea elementelor
+            previewImage.style.display = 'none';
+            previewVideo.style.display = 'none';
+            saveButton.style.display = 'none';
+            repetatiButton.style.display = 'none';
+            stopRecordButton.style.display = 'none';
+            captureButton.style.display = 'block';
+            recordButton.style.display = 'block';
+            switchCameraButton.style.display = 'block';
+            info.style.display = 'block';
+        });
+
+        // Adăugăm evenimentul click pentru salvarea pozei sau a înregistrării video
+        saveButton.addEventListener('click', function() {
+            if (previewImage.style.display === 'block') {
+                saveImage();
+            } else if (previewVideo.style.display === 'block') {
+                saveVideo();
+            }
+        });
+
+        switchCameraButton.addEventListener('click', switchCamera);
+
+        function activateCamera() {
+            const constraints = {
+                video: {
+                    facingMode: useFrontCamera ? 'user' : 'environment'
+                },
+                audio: { 
+                    echoCancellation: true 
+                }
+            };
+
+            if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+                navigator.mediaDevices.getUserMedia(constraints)
+                    .then(function(stream) {
+                        currentStream = stream;
+                        video.style.transform = 'rotateY(180deg)';
+                        video.srcObject = stream;
+                        video.play();
+                        video.style.display = 'block';
+                        cameraDeschisa = true;
+                        captureButton.textContent = 'Capturează';
+                        recordButton.textContent = 'Înregistrează';
+                    })
+                    .catch(function(error) {
+                        console.error('Eroare la accesarea camerei: ', error);
+                        alert('Nu s-a putut accesa camera. Verifică permisiunile browserului.');
+                    });
+            } else {
+                alert('Browser-ul tău nu suportă accesul la cameră.');
+            }
+        }
+
+        function switchCamera() {
+            // Schimbăm camera (din față în spate sau invers)
+            useFrontCamera = !useFrontCamera;
+            
+            // Oprim fluxul curent al camerei
+            if (currentStream) {
+                currentStream.getTracks().forEach(track => track.stop());
+            }
+            
+            // Reactivăm camera cu noile setări
+            activateCamera();
+        }
+
+        function startRecording() {
+            chunks = [];
+            captureButton.style.display = 'none';
+            mediaRecorder = new MediaRecorder(video.srcObject);
+            
+            mediaRecorder.ondataavailable = function(event) {
+                if (event.data.size > 0) {
+                    chunks.push(event.data);
+                }
+            };
+            
+            mediaRecorder.onstop = function() {
+                const blob = new Blob(chunks, { type: 'video/mp4' });
+                const videoURL = URL.createObjectURL(blob);
+                previewVideo.src = videoURL;
+                video.style.display = 'none';
+                recordButton.style.display = 'none';
+                stopRecordButton.style.display = 'none';
+                info.style.display = 'none';
+                previewVideo.style.display = 'block';
+                saveButton.style.display = 'block';
+                repetatiButton.style.display = 'block';
+                switchCameraButton.style.display = 'none';
+            };
+            
+            mediaRecorder.start();
+            stopRecordButton.style.display = 'block';
+            recordButton.style.display = 'none';
+
+            // Limitează înregistrarea la 6 secunde
+            setTimeout(function() {
+                if (mediaRecorder && mediaRecorder.state === 'recording') {
+                    mediaRecorder.stop();
+                }
+            }, 6000);
+        }
+
+        function takePicture() {
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            const context = canvas.getContext('2d');
+            
+            // Dacă folosim camera frontală, inversăm imaginea orizontal pentru a corecta efectul oglindă
+            if (useFrontCamera) {
+                context.translate(canvas.width, 0);
+                context.scale(-1, 1);
+            }
+            
+            context.drawImage(video, 0, 0, canvas.width, canvas.height);
+            
+            // Resetăm transformarea
+            if (useFrontCamera) {
+                context.setTransform(1, 0, 0, 1, 0, 0);
+            }
+            
+            video.style.display = 'none';
+            captureButton.style.display = 'none';
+            recordButton.style.display = 'none';
+            info.style.display = 'none';
+            previewImage.src = canvas.toDataURL('image/png');
+            previewImage.style.display = 'block';
+            saveButton.style.display = 'block';
+            repetatiButton.style.display = 'block';
+            switchCameraButton.style.display = 'none';
+        }
+
+        function stopRecording() {
+            if (mediaRecorder && mediaRecorder.state === 'recording') {
+                mediaRecorder.stop();
+            }
+            stopRecordButton.style.display = 'none';
+        }
+
+        function saveImage() {
+            // Salvăm imaginea în localStorage pentru a fi preluată de galerie
+            const imageData = previewImage.src;
+            saveToLocalStorage(imageData, 'image');
+            
+            // Afișăm mesajul de confirmare
+            showSuccessMessage();
+        }
+
+        function saveVideo() {
+            // Convertim blob-ul video în DataURL pentru a-l salva în localStorage
+            const blob = new Blob(chunks, { type: 'video/mp4' });
+            const reader = new FileReader();
+            
+            reader.onloadend = function() {
+                const videoData = reader.result;
+                saveToLocalStorage(videoData, 'video');
+                
+                // Afișăm mesajul de confirmare
+                showSuccessMessage();
+            };
+            
+            reader.readAsDataURL(blob);
+        }
+
+        function saveToLocalStorage(data, type) {
+            // Obținem lista existentă de amintiri din localStorage
+            let amintiri = JSON.parse(localStorage.getItem('amintiriVacanță')) || [];
+            
+            // Adăugăm noua amintire la listă
+            amintiri.push({
+                data: data,
+                type: type,
+                date: new Date().toISOString()
+            });
+            
+            // Salvăm lista actualizată în localStorage
+            localStorage.setItem('amintiriVacanță', JSON.stringify(amintiri));
+        }
+
+        function showSuccessMessage() {
+            // Oprim camera după salvare
+            if (currentStream) {
+                currentStream.getTracks().forEach(track => track.stop());
+                currentStream = null;
+                cameraDeschisa = false;
+            }
+
+            // Ascunde elementele după salvare
+            repetatiButton.style.display = 'none';
+            saveButton.style.display = 'none';
+            previewImage.style.display = 'none';
+            previewVideo.style.display = 'none';
+            info.textContent = 'Felicitări! Amintirea ta a fost salvată.';
+            info.style.display = 'block';
+            
+            // Adăugăm butoane pentru a face o nouă poză/video sau a vedea galeria
+            const buttonContainer = document.getElementById('buttonContainer');
+            buttonContainer.innerHTML = '';
+            
+            const newButton = document.createElement('button');
+            newButton.id = 'newButton';
+            newButton.textContent = 'Fă o nouă amintire';
+            newButton.onclick = function() {
+                resetApp();
+            };
+            buttonContainer.appendChild(newButton);
+            
+            const galleryButton = document.createElement('button');
+            galleryButton.id = 'galleryButton';
+            galleryButton.textContent = 'Vezi galeria';
+            galleryButton.onclick = function() {
+                window.location.href = 'gallery.html';
+            };
+            buttonContainer.appendChild(galleryButton);
+        }
+        
+        function resetApp() {
+            // Resetăm aplicația la starea inițială
+            chunks = [];
+            cameraDeschisa = false;
+            
+            // Resetăm interfața
+            const buttonContainer = document.getElementById('buttonContainer');
+            buttonContainer.innerHTML = '';
+            buttonContainer.appendChild(captureButton);
+            buttonContainer.appendChild(recordButton);
+            buttonContainer.appendChild(stopRecordButton);
+            buttonContainer.appendChild(repetatiButton);
+            buttonContainer.appendChild(saveButton);
+            buttonContainer.appendChild(switchCameraButton);
+            
+            info.textContent = 'Fă o poză sau înregistrează un video care să rămână ca amintire';
+            captureButton.style.display = 'block';
+            recordButton.style.display = 'block';
+            stopRecordButton.style.display = 'none';
+            repetatiButton.style.display = 'none';
+            saveButton.style.display = 'none';
+            previewImage.style.display = 'none';
+            previewVideo.style.display = 'none';
+            
+            // Reactivăm camera
+            activateCamera();
+        }
+    </script>
+</body>
+</html>
